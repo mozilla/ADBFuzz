@@ -32,7 +32,7 @@ In order to use this software you need:
   crash reporter enabled.
  OR
 * A non-rooted Android device with your own debuggable Firefox
-  Mobile build (see below) and crash reporter enabled.
+  Mobile build (see end of this doc) and crash reporter enabled.
 
 * A network connection between your host machine and the Android
   device, e.g. a common LAN/WLAN.
@@ -79,3 +79,52 @@ harness detects a crash, it will copy the websocket logfile and store it
 together with the crash dump. You need to extract the information from the log
 and replace the "start();" call at the end of the fuzzer file with those
 commands to replay them.
+
+
+=== Advanced: Creating a debuggable Firefox build for use with non-rooted devices  ===
+
+The harness supports running on non-rooted devices, given that the "run-as" functionality
+is working. Using "run-as" requires the installed target package to be marked in a special
+way ("debuggable"), because it allows other apps to access the data of that application,
+which would be a security problem. To build your own Fennec debuggable package, perform
+the following steps:
+
+1. Get a working build environment for Fennec:
+ https://wiki.mozilla.org/Mobile/Fennec/Android
+
+2. Modify the file mobile/android/base/AndroidManifest.xml.in:
+ In that file, search for "debuggable", you will find a conditional where it's set to true
+ or false based on MOZILLA_OFFICIAL. Make sure it's always true.
+
+3. Use the following .mozconfig to build (make -f client.mk && make -C objdir-droid package):
+
+# Add the correct paths here
+ac_add_options --with-android-ndk="/home/build/NVPACK/android-ndk"
+ac_add_options --with-android-sdk="/home/build/NVPACK/android-sdk/platforms/android-13"
+ac_add_options --with-android-version=5
+ac_add_options --with-android-tools="/home/build/NVPACK/android-sdk/tools"
+# android options
+ac_add_options --enable-application=mobile/android
+ac_add_options --target=arm-linux-androideabi
+ac_add_options --with-endian=little
+ac_add_options --with-ccache
+ac_add_options --enable-tests
+ac_add_options --disable-elf-hack
+ac_add_options --enable-debug-symbols
+export MOZ_OLD_LINKER=1
+# 32 bit
+ac_add_options --host=i386-unknown-linux
+HOST_CC="gcc -m32"
+HOST_CXX="g++ -m32"
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/objdir-droid
+mk_add_options MOZ_MAKE_FLAGS="-j8"
+ac_add_options --enable-optimize
+ac_add_options --enable-debug
+export MOZILLA_OFFICIAL=1
+
+4. Install the resulting package in objdir-droid/dist/ to your device.
+
+5. Verify it's running, using "adb shell run-as org.mozilla.fennec_yourusername ls".
+
+Unfortunately, some (older) Android versions ship a broken version of the "run-as" tool, 
+and if that is the case with your device, then there is no other way than rooting it, sorry :(

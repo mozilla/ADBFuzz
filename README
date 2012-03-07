@@ -28,10 +28,11 @@ In order to use this software you need:
 
 * A working Android Development environment (in particular ADB)
 
-* A rooted Android device with Fennec (Firefox Mobile)
- OR 
-* A non-rooted Android device with your own debuggable Firefox 
-  Mobile build (see below).
+* A rooted Android device with Fennec (Firefox Mobile) with
+  crash reporter enabled.
+ OR
+* A non-rooted Android device with your own debuggable Firefox
+  Mobile build (see below) and crash reporter enabled.
 
 * A network connection between your host machine and the Android
   device, e.g. a common LAN/WLAN.
@@ -41,6 +42,7 @@ In order to use this software you need:
   the profile directory while Firefox is not running.
   (DON'T use your productive profile for this!)
 
+* The em-websocket-proxy script (gem install em-websocket-proxy).
 
 
 === Configuring the Sample Fuzzer ===
@@ -49,10 +51,16 @@ Open the file helloworld.cfg, adjust localHost to match your host's LAN
 IP address. If you are attempting to use ADB over TCP/IP, rather than over
 a USB connection, also set the remoteHost variable appropriately.
 
+
 === Starting the Sample Fuzzer ===
 
-Start the fuzzer with the following command:
+Start the fuzzer with the following commands:
+ 
+ # Start the websocket proxy first, to relay connections
+ # from the device to your fuzzer.
+ em-websocket-proxy -p 8090 -q 8089 -r localhost &
 
+ # Now start the fuzzer itself.
  python adbfuzz.py helloworld.cfg run
 
 You'll see all sorts of debug messages, but if everything goes right, you
@@ -63,3 +71,11 @@ The sample fuzzer included is just a little demo that makes a pink square
 div bounce around using random CSS transformations. It's unlikely that this
 alone will find bugs, but I think it's a good demonstration of what you can
 do.
+
+=== Reproducing crashes ===
+
+The sample fuzzer sends all commands it executes using websockets. Once the
+harness detects a crash, it will copy the websocket logfile and store it
+together with the crash dump. You need to extract the information from the log
+and replace the "start();" call at the end of the fuzzer file with those
+commands to replay them.

@@ -1,0 +1,65 @@
+== Quick Start Guide ==
+
+=== Important Notice ===
+
+This software is a prototype, it's not heavily tested and it was 
+developed in a specific environment. Don't expect everything to 
+work out of the box. Be prepared to solve problems related to your 
+environment, configuration and defects in this code. If you hit a 
+problem you cannot solve, let us know. 
+
+You can find us on IRC at irc.mozilla.org, channel #security.
+
+Or you can write me an email to decoder@mozilla.com.
+
+Furthermore, if you make changes to this code, e.g. bugfixes or
+modifications that others would benefit from as well, please be
+fair and share them :)
+
+
+=== Requirements ===
+
+In order to use this software you need:
+
+* The mozdevice module:
+  Tested with my fork at 
+     https://github.com/choller/mozbase/tree/master/mozdevice
+  but changes are regularly merged to main.
+
+* A working Android Development environment (in particular ADB)
+
+* A rooted Android device with Fennec (Firefox Mobile)
+ OR 
+* A non-rooted Android device with your own debuggable Firefox 
+  Mobile build (see below).
+
+* A network connection between your host machine and the Android
+  device, e.g. a common LAN/WLAN.
+
+* A Firefox profile on the device with settings as shown in
+  the misc/prefs.js file. You can simply copy this file to
+  the profile directory while Firefox is not running.
+  (DON'T use your productive profile for this!)
+
+
+
+=== Configuring the Sample Fuzzer ===
+
+Open the file helloworld.cfg, adjust localHost to match your host's LAN
+IP address. If you are attempting to use ADB over TCP/IP, rather than over
+a USB connection, also set the remoteHost variable appropriately.
+
+=== Starting the Sample Fuzzer ===
+
+Start the fuzzer with the following command:
+
+ python adbfuzz.py helloworld.cfg run
+
+You'll see all sorts of debug messages, but if everything goes right, you
+should see Fennec popup on the device, trying to contact the host to load
+the fuzzing code.
+
+The sample fuzzer included is just a little demo that makes a pink square
+div bounce around using random CSS transformations. It's unlikely that this
+alone will find bugs, but I think it's a good demonstration of what you can
+do.

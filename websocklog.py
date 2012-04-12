@@ -30,8 +30,9 @@ if __name__ == "__main__":
     fileHandle = open("websock.log", "w")
     sockfile = conn.makefile()
     while True:
-        data = sockfile.readline().strip()
-        #print data
+        data = sockfile.readline()
+        if (len(data) == 0):
+          break
+        data = data.strip()
         fileHandle.write(data + "\n")
         fileHandle.flush()
-        

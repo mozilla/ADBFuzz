@@ -308,65 +308,6 @@ class ADBFuzz:
 
     return True
 
-  def getMinidumpTrace(self, dumpFile):
-    proc = subprocess.Popen(["minidump_stackwalk", "-m", dumpFile], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout = proc.communicate()[0].splitlines()
-
-    crashType = None
-    crashThread = None
-    crashTrace = []
-
-    for line in stdout:
-      # Search for Crash|SIGABRT|0x43e0|9
-      if line.startswith("Crash|SIG"):
-        tok = line.split("|")
-        crashType = tok[1]
-        crashThread = tok[3]
-        break
-
-    if crashThread == None:
-      raise Exception("Cannot identify crashing thread from dump")
-
-    for line in stdout:
-      tok = line.split("|")
-      if ((len(tok) == 7) and (tok[0] == crashThread)):
-        if (int(tok[1]) < 8):
-          crashTrace.append((tok[1], tok[2], tok[6]))
-
-    return (crashType, crashTrace)
-
-  def getSymbolizedMinidumpTrace(self, dumpFile, binarySearchPath):
-    dumpTrace = self.getMinidumpTrace(dumpFile)
-    symbolTrace = []
-
-    for frame in dumpTrace:
-      frameNum = frame[0]
-      frameFile = frame[1]
-      frameAddr = frame[2]
-      frameFileResolved = None
-      for path, dirs, files in os.walk(os.path.abspath(binarySearchPath)):
-        for filename in files:
-          if filename == frameFile:
-            frameFileResolved = os.path.join(path, filename)
-            break
-
-      if frameFileResolved != None:
-        addr2line = subprocess.Popen(["addr2line", "-f", "-C", "-e", frameFileResolved, frameAddr], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        a2ldata = addr2line.communicate()[0].splitlines()
-        if (len(a2ldata) >= 2):
-          frameFunc = a2ldata[0]
-          frameSrc = a2ldata[1]
-          symbolTrace.append((frameNum, frameFunc, frameSrc))
-          next
-        elif (len(a2ldata) == 1):
-          frameFunc = a2ldata[0]
-          symbolTrace.append((frameNum, frameFunc, frameFile))
-          next
-
-      symbolTrace.append((frameNum, frameAddr, frameFile))
-
-    return symbolTrace
-
   def startLoggers(self):
     if self.useWebSockets:
       # This method starts itself multiple processes (proxy included)

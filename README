@@ -54,13 +54,8 @@ a USB connection, also set the remoteHost variable appropriately.
 
 === Starting the Sample Fuzzer ===
 
-Start the fuzzer with the following commands:
+Start the fuzzer with the following command:
  
- # Start the websocket proxy first, to relay connections
- # from the device to your fuzzer.
- em-websocket-proxy -p 8090 -q 8089 -r localhost &
-
- # Now start the fuzzer itself.
  python adbfuzz.py helloworld.cfg run
 
 You'll see all sorts of debug messages, but if everything goes right, you
@@ -75,9 +70,9 @@ do.
 === Reproducing crashes ===
 
 The sample fuzzer sends all commands it executes using websockets. Once the
-harness detects a crash, it will copy the websocket logfile and store it
-together with the crash dump. You need to extract the information from the log
-and replace the "start();" call at the end of the fuzzer file with those
+harness detects a crash, it will copy the logfiles (websocket+syslog) and store
+them together with the crash dump. You need to extract the information from the 
+log and replace the "start();" call at the end of the fuzzer file with those
 commands to replay them.
 
 

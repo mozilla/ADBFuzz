@@ -24,6 +24,9 @@ from ConfigParser import SafeConfigParser
 
 from mozdevice import DeviceManagerADB
 
+from triage import Triager
+from minidump import Minidump
+
 def usage():
   print ""
   print "Usage: " + sys.argv[0] + " cfgFile cmd params"
@@ -50,7 +53,8 @@ def main():
     print "Obtaining symbolized trace..."
     dumpFile = sys.argv[1]
     libSearchPath = sys.argv[2]
-    symbolTrace = fuzzInst.getSymbolizedMinidumpTrace(dumpFile, libSearchPath)
+    minidump = Minidump(dumpFile, libSearchPath)
+    symbolTrace = minidump.getSymbolizedCrashTrace()
     print ""
     for frame in symbolTrace:
       print "#" + frame[0] + "\t" + frame[1] + " at " + frame[2]
@@ -73,10 +77,11 @@ class ADBFuzz:
     cfgDefaults['localPort'] = '8088'
     cfgDefaults['useWebSockets'] = False
     cfgDefaults['localWebSocketPort'] = '8089'
+    cfgDefaults['libDir'] = None
 
     self.cfg = SafeConfigParser(cfgDefaults)
     if (len(self.cfg.read(cfgFile)) == 0):
-      raise "Unable to read configuration file: " + cfgFile
+      raise Exception("Unable to read configuration file: " + cfgFile)
 
     self.fuzzerFile = self.cfg.get('main', 'fuzzer')
     self.runTimeout = self.cfg.getint('main', 'runTimeout')
@@ -87,9 +92,13 @@ class ADBFuzz:
     self.useWebSockets = self.cfg.getboolean('main', 'useWebSockets')
     self.localWebSocketPort = self.cfg.get('main', 'localWebSocketPort')
 
+    self.libDir = self.cfg.get('main', 'libDir')
+
     self.HTTPProcess = None
-    self.logProcess = None
+    self.logProcesses = []
     self.remoteInitialized = None
+
+    self.triager = Triager(cfgFile)
 
   def remoteInit(self):
     if (self.remoteInitialized != None):
@@ -116,22 +125,30 @@ class ADBFuzz:
     self.remoteInitialized = True
 
   def signal_handler(self, signal, frame):
+    self.cleanupProcesses()
+    sys.exit(0)
+
+  def cleanupProcesses(self):
     self.stopFennec()
     if (self.HTTPProcess != None):
       try:
         self.HTTPProcess.terminate()
       except:
         pass
-    if (self.logProcess != None):
+    if (self.logProcesses != None):
       try:
-        self.logProcess.terminate()
+        while (len(self.logProcesses) > 0):
+          self.logProcesses.pop().terminate()
       except:
         pass
-    sys.exit(0)
 
   def loopFuzz(self):
-    while True:
-      self.runFuzzer()
+    try:
+      while True:
+        self.runFuzzer()
+    except:
+      self.cleanupProcesses()
+      raise
 
   def runFuzzer(self):
     self.remoteInit()
@@ -147,8 +164,8 @@ class ADBFuzz:
     # Start our HTTP server for serving the fuzzer code
     self.HTTPProcess = self.startHTTPServer()
 
-    # Start a logger
-    self.logProcess = self.startLogger()
+    # Start all loggers
+    self.startLoggers()
 
     # Start Fennec
     self.startFennec()
@@ -163,6 +180,9 @@ class ADBFuzz:
     while(self.isFennecRunning()):
       time.sleep(self.runTimeout)
 
+      if not os.path.exists(self.logFile):
+        raise Exception("Logfile not present. If you are using websockets, this could indicate a network problem.")
+
       # Poor man's hang detection. Yes, this is a bad
       # idea, just for the sake of proof-of-concept
       newLogSize = os.path.getsize(self.logFile)
@@ -174,7 +194,8 @@ class ADBFuzz:
 
     if hangDetected:
       self.stopFennec()
-      self.logProcess.terminate()
+      while (len(self.logProcesses) > 0):
+        self.logProcesses.pop().terminate()
       print "Hang detected"
     else:
       # Fennec died
@@ -185,14 +206,23 @@ class ADBFuzz:
       if not self.fetchMinidump(dumps[0]):
         raise Exception("Failed to fetch minidump with UUID " + dumps[0])
 
-      # Terminate our logging process and copy logfile
-      self.logProcess.terminate()
-      shutil.copy2("device.log", dumps[0] + ".log")
+      # Terminate our logging processes and copy logfiles
+      while (len(self.logProcesses) > 0):
+        self.logProcesses.pop().terminate()
+      shutil.copy2(self.syslogFile, dumps[0] + ".syslog")
+      shutil.copy2(self.logFile, dumps[0] + ".log")
+
+      minidump = Minidump(dumps[0] + ".dmp", self.libDir)
 
       print "Crash detected. Reproduction logfile stored at: " + dumps[0] + ".log"
+      crashTrace = minidump.getCrashTrace()
+      crashType = minidump.getCrashType()
+      print "Crash type: " + crashType
       print "Crash backtrace:"
       print ""
-      print self.getMinidumpTrace(dumps[0] + ".dmp")
+      print crashTrace
+
+      self.triager.process(minidump, dumps[0] + ".syslog", dumps[0] + ".log")
 
     self.HTTPProcess.terminate()
     return
@@ -303,7 +333,7 @@ class ADBFuzz:
         if (int(tok[1]) < 8):
           crashTrace.append((tok[1], tok[2], tok[6]))
 
-    return crashTrace
+    return (crashType, crashTrace)
 
   def getSymbolizedMinidumpTrace(self, dumpFile, binarySearchPath):
     dumpTrace = self.getMinidumpTrace(dumpFile)
@@ -337,29 +367,31 @@ class ADBFuzz:
 
     return symbolTrace
 
-  def startLogger(self):
+  def startLoggers(self):
     if self.useWebSockets:
-      return self.startNewWebSocketLog()
-    else:
-      return self.startNewDeviceLog()
+      # This method starts itself multiple processes (proxy included)
+      self.startNewWebSocketLog()
+    self.startNewDeviceLog()
 
   def startNewDeviceLog(self):
     # Clear the log first
     subprocess.check_call(["adb", "logcat", "-c"])
 
     # Logfile
-    self.logFile = 'device.log'
+    self.syslogFile = 'device.log'
 
     # Start logging
-    logFile = open(self.LogFile, 'w')
-    logProcess = subprocess.Popen(["adb", "logcat", "-s", "Gecko:v", "GeckoDump:v","GeckoConsole:v"], stdout=logFile)
-
-    return logProcess
+    logFile = open(self.syslogFile, 'w')
+    logProcess = subprocess.Popen(["adb", "logcat", "-s", "Gecko:v", "GeckoDump:v", "GeckoConsole:v", "MOZ_Assert:v"], stdout=logFile)
+    self.logProcesses.append(logProcess)
 
   def startNewWebSocketLog(self):
     self.logFile = 'websock.log'
-    logProcess = subprocess.Popen(["python", "websocklog.py", "localhost", self.localWebSocketPort])
-    return logProcess
+    # TODO: Remove hardcoded port here
+    logProcess = subprocess.Popen(["em-websocket-proxy", "-p", "8090", "-q", self.localWebSocketPort, "-r", "localhost"])
+    self.logProcesses.append(logProcess)
+    proxyProcess = subprocess.Popen(["python", "websocklog.py", "localhost", self.localWebSocketPort])
+    self.logProcesses.append(proxyProcess)
 
   def startHTTPServer(self):
     HTTPProcess = subprocess.Popen(["python", "-m", "SimpleHTTPServer", self.localPort ])

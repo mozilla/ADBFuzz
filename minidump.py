@@ -22,6 +22,7 @@ class Minidump:
   def __init__(self, dumpFile, libDir=None):
     self.dumpFile = dumpFile
     self.libDir = libDir
+    self.cleaned = False
 
     self.crashTrace = []
     self.crashType = None
@@ -33,7 +34,7 @@ class Minidump:
     if (len(self.crashTrace) > 0):
       return self.crashTrace
 
-    proc = subprocess.Popen(["minidump_stackwalk", "-m", self.dumpFile], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(["minidump_stackwalk", "-m", self.getFilename()], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout = proc.communicate()[0].splitlines()
 
     for line in stdout:
@@ -103,6 +104,16 @@ class Minidump:
       self.crashTraceSymbols.append((frameNum, frameAddr, frameFile))
 
     return self.crashTraceSymbols
+
+  def cleanup(self):
+    os.remove(self.getFilename())
+    self.cleaned = True
+
+  def getFilename(self):
+    if self.cleaned:
+      raise Exception("Attempted to perform file operation on deleted minidump file")
+    else:
+      return self.dumpFile
 
 if __name__ == "__main__":
   raise Exception("This module cannot run standalone, but is used by ADBFuzz")

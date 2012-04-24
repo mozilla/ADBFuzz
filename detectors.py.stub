@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 2.0
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# The Original Code is ADBFuzz.
+#
+# The Initial Developer of the Original Code is Christian Holler (decoder).
+#
+# Contributors:
+#  Christian Holler <decoder@mozilla.com> (Original Developer)
+#
+# ***** END LICENSE BLOCK *****
+
+
+# NOTE: This file is a stub. It will be replaced by our internal implementation
+# once that part of the code has been open-sourced. You can however implement
+# the functions below easily yourself.
+
+
+from __future__ import with_statement
+import os, sys, platform, signal
+
+class Detector:
+  def __init__(self):
+    pass
+
+class AssertionDetector(Detector):
+  def __init__(self, knownPath):
+    pass
+  
+  def scanLineAssertions(self, line):
+    """
+    Determines if the given line contains an interesting assertion.
+    Returns True if the line contains an interesting assertion and
+    False otherwise.
+    """
+    return True
+
+  def scanFileAssertions(self, currentFile, verbose, ignoreKnownAssertions, lineFilter=None):
+    """
+    Determines if the given file contains one or more assertions. If the lineFilter parameter
+    is passed, it is interpreted as a function taking one line as a parameter and applied
+    to every line as a filter prior to checking it. The lineFilter function is expected to
+    return the filtered line that is checked then.
+    
+    Returns True if the file contains any assertions. If ignoreKnownAssertions is True,
+    then True is only returned if at least one assertion is unknown (interesting).
+    """
+    return True
+
+class CrashDetector(Detector):
+  def __init__(self, knownPath):
+    pass
+
+  def isKnownCrashSignature(self, line):
+    """
+    Determines if the given line contains a known crash signature.
+    Returns True if the line contains a known crash signature and
+    False otherwise.
+    """
+    return False

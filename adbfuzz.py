@@ -79,12 +79,16 @@ class ADBFuzz:
     cfgDefaults['localWebSocketPort'] = '8089'
     cfgDefaults['libDir'] = None
 
+    cfgDefaults['runTimeout'] = 5
+    cfgDefaults['remoteHost'] = 1024*1024*10 # Default to 10 kb maximum log
+
     self.cfg = SafeConfigParser(cfgDefaults)
     if (len(self.cfg.read(cfgFile)) == 0):
       raise Exception("Unable to read configuration file: " + cfgFile)
 
     self.fuzzerFile = self.cfg.get('main', 'fuzzer')
     self.runTimeout = self.cfg.getint('main', 'runTimeout')
+    self.maxLogSize = self.cfg.getint('main', 'maxLogSize')
     self.remoteAddr = self.cfg.get('main', 'remoteHost')
     self.localAddr = self.cfg.get('main', 'localHost')
     self.localPort = self.cfg.get('main', 'localPort')
@@ -177,6 +181,7 @@ class ADBFuzz:
     
     logSize = 0
     hangDetected = False
+    forceRestart = False
     while(self.isFennecRunning()):
       time.sleep(self.runTimeout)
 
@@ -191,12 +196,15 @@ class ADBFuzz:
         break
       else:
         logSize = newLogSize
+        if newLogSize > self.maxLogSize:
+          forceRestart = True
+          break
 
-    if hangDetected:
+    if hangDetected or forceRestart:
       self.stopFennec()
       while (len(self.logProcesses) > 0):
         self.logProcesses.pop().terminate()
-      print "Hang detected"
+      print "Hang detected or running too long, restarting..."
     else:
       # Fennec died
       dumps = self.getMinidumps()

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 2.0
 #

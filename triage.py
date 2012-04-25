@@ -20,41 +20,56 @@ import shutil
 import os
 import signal
 import sys
+import re
 from ConfigParser import SafeConfigParser
 
+from detectors import AssertionDetector, CrashDetector
+
 class Triager:
-  def __init__(self, cfgFile):
-    cfgDefaults = {}
-    cfgDefaults['remoteHost'] = None
-    cfgDefaults['localPort'] = '8088'
-    cfgDefaults['useWebSockets'] = False
-    cfgDefaults['localWebSocketPort'] = '8089'
-    cfgDefaults['libDir'] = None
+  def __init__(self, config):
+    self.config = config
 
-    self.cfg = SafeConfigParser(cfgDefaults)
-    if (len(self.cfg.read(cfgFile)) == 0):
-      raise "Unable to read configuration file: " + cfgFile
-
-    self.fuzzerFile = self.cfg.get('main', 'fuzzer')
-    self.runTimeout = self.cfg.getint('main', 'runTimeout')
-    self.remoteAddr = self.cfg.get('main', 'remoteHost')
-    self.localAddr = self.cfg.get('main', 'localHost')
-    self.localPort = self.cfg.get('main', 'localPort')
-
-    self.useWebSockets = self.cfg.getboolean('main', 'useWebSockets')
-    self.localWebSocketPort = self.cfg.get('main', 'localWebSocketPort')
-
-    self.libDir = self.cfg.get('main', 'libDir')
-
-    self.HTTPProcess = None
-    self.logProcess = None
-    self.remoteInitialized = None
+    # TODO: Move this to config
+    self.knownPath = "/home/decoder/Mozilla/repos/fuzzing/known/mozilla-central/fennec-native"
+    self.assertDetector = AssertionDetector(self.config.knownPath)
+    self.crashDetector = CrashDetector(self.config.knownPath)
 
   def process(self, miniDump, systemLog, websockLog):
-    print "Triager called: "
-    print miniDump
-    print systemLog
-    print websockLog
+    print "Triaging crash..."
+
+    # Read Android system log
+    systemLogFile = open(systemLog)
+
+    # Check if the syslog file contains an interesting assertion.
+    # The lambda removes the Android syslog tags before matching
+    hasNewAssertion = self.assertDetector.scanFileAssertions(
+        systemLogFile, 
+        verbose=True, 
+        ignoreKnownAssertions=True,
+        lineFilter=lambda x: re.sub('^[^:]+: ', '', x)
+    )
+
+    systemLogFile.close()
+    
+    # Obtain symbolized crash trace to check crash signature
+    trace = miniDump.getSymbolizedCrashTrace()
+
+    isNewCrash = True
+    crashFunction = "Unknown"
+    if (len(trace) > 0):
+      crashFunction = trace[0][1]
+      print "Crashed at " + crashFunction
+      isNewCrash = not self.crashDetector.isKnownCrashSignature(crashFunction)
+
+    if hasNewAssertion or isNewCrash:
+      print "Found new issue, check " + websockLog + " to reproduce"
+    else:
+      # Delete files if not in debug mode
+      if not self.config.debug:
+        miniDump.cleanup()
+        os.remove(systemLog)
+        os.remove(websockLog)
+
     return
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ from ConfigParser import SafeConfigParser
 
 from mozdevice import DeviceManagerADB
 
+from adbfuzzconfig import ADBFuzzConfig
 from triage import Triager
 from minidump import Minidump
 
@@ -73,43 +74,19 @@ def main():
 class ADBFuzz:
 
   def __init__(self, cfgFile):
-    cfgDefaults = {}
-    cfgDefaults['remoteHost'] = None
-    cfgDefaults['localPort'] = '8088'
-    cfgDefaults['useWebSockets'] = False
-    cfgDefaults['localWebSocketPort'] = '8089'
-    cfgDefaults['libDir'] = None
-
-    cfgDefaults['runTimeout'] = 5
-    cfgDefaults['remoteHost'] = 1024*1024*10 # Default to 10 kb maximum log
-
-    self.cfg = SafeConfigParser(cfgDefaults)
-    if (len(self.cfg.read(cfgFile)) == 0):
-      raise Exception("Unable to read configuration file: " + cfgFile)
-
-    self.fuzzerFile = self.cfg.get('main', 'fuzzer')
-    self.runTimeout = self.cfg.getint('main', 'runTimeout')
-    self.maxLogSize = self.cfg.getint('main', 'maxLogSize')
-    self.remoteAddr = self.cfg.get('main', 'remoteHost')
-    self.localAddr = self.cfg.get('main', 'localHost')
-    self.localPort = self.cfg.get('main', 'localPort')
-
-    self.useWebSockets = self.cfg.getboolean('main', 'useWebSockets')
-    self.localWebSocketPort = self.cfg.get('main', 'localWebSocketPort')
-
-    self.libDir = self.cfg.get('main', 'libDir')
+    self.config = ADBFuzzConfig(cfgFile)
 
     self.HTTPProcess = None
     self.logProcesses = []
     self.remoteInitialized = None
 
-    self.triager = Triager(cfgFile)
+    self.triager = Triager(self.config)
 
   def remoteInit(self):
     if (self.remoteInitialized != None):
       return
 
-    self.dm = DeviceManagerADB(self.remoteAddr, 5555)
+    self.dm = DeviceManagerADB(self.config.remoteAddr, 5555)
     self.appName = self.dm.packageName
     self.appRoot = self.dm.getAppRoot(self.appName)
     self.profileBase = self.appRoot + "/files/mozilla"
@@ -184,7 +161,7 @@ class ADBFuzz:
     hangDetected = False
     forceRestart = False
     while(self.isFennecRunning()):
-      time.sleep(self.runTimeout)
+      time.sleep(self.config.runTimeout)
 
       if not os.path.exists(self.logFile):
         raise Exception("Logfile not present. If you are using websockets, this could indicate a network problem.")
@@ -197,7 +174,7 @@ class ADBFuzz:
         break
       else:
         logSize = newLogSize
-        if newLogSize > self.maxLogSize:
+        if newLogSize > self.config.maxLogSize:
           forceRestart = True
           break
 
@@ -221,7 +198,7 @@ class ADBFuzz:
       shutil.copy2(self.syslogFile, dumps[0] + ".syslog")
       shutil.copy2(self.logFile, dumps[0] + ".log")
 
-      minidump = Minidump(dumps[0] + ".dmp", self.libDir)
+      minidump = Minidump(dumps[0] + ".dmp", self.config.libDir)
 
       print "Crash detected. Reproduction logfile stored at: " + dumps[0] + ".log"
       crashTrace = minidump.getCrashTrace()
@@ -257,7 +234,7 @@ class ADBFuzz:
 
     while(self.isFennecRunning()):
       time.sleep(1)
-      if ((time.time() - startTime) > self.runTimeout):
+      if ((time.time() - startTime) > self.config.runTimeout):
         self.stopFennec()
         self.HTTPProcess.terminate()
         return False
@@ -318,7 +295,7 @@ class ADBFuzz:
     return True
 
   def startLoggers(self):
-    if self.useWebSockets:
+    if self.config.useWebSockets:
       # This method starts itself multiple processes (proxy included)
       self.startNewWebSocketLog()
     self.startNewDeviceLog()
@@ -338,20 +315,20 @@ class ADBFuzz:
   def startNewWebSocketLog(self):
     self.logFile = 'websock.log'
     # TODO: Remove hardcoded port here
-    logProcess = subprocess.Popen(["em-websocket-proxy", "-p", "8090", "-q", self.localWebSocketPort, "-r", "localhost"])
+    logProcess = subprocess.Popen(["em-websocket-proxy", "-p", "8090", "-q", self.config.localWebSocketPort, "-r", "localhost"])
     self.logProcesses.append(logProcess)
-    proxyProcess = subprocess.Popen(["python", "websocklog.py", "localhost", self.localWebSocketPort])
+    proxyProcess = subprocess.Popen(["python", "websocklog.py", "localhost", self.config.localWebSocketPort])
     self.logProcesses.append(proxyProcess)
 
   def startHTTPServer(self):
-    HTTPProcess = subprocess.Popen(["python", "-m", "SimpleHTTPServer", self.localPort ])
+    HTTPProcess = subprocess.Popen(["python", "-m", "SimpleHTTPServer", self.config.localPort ])
     return HTTPProcess
 
   def startFennec(self):
     env = {}
     env['MOZ_CRASHREPORTER_NO_REPORT'] = '1'
     env['MOZ_CRASHREPORTER_SHUTDOWN'] = '1'
-    self.dm.launchProcess([self.appName, "http://" + self.localAddr + ":" + self.localPort + "/" + self.fuzzerFile], None, None, env)
+    self.dm.launchProcess([self.appName, "http://" + self.config.localAddr + ":" + self.config.localPort + "/" + self.config.fuzzerFile], None, None, env)
 
   def stopFennec(self):
     ret = self.dm.killProcess(self.appName, True)

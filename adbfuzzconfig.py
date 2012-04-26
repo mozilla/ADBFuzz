@@ -27,10 +27,9 @@ class ADBFuzzConfig:
     cfgDefaults['useWebSockets'] = False
     cfgDefaults['localWebSocketPort'] = '8089'
     cfgDefaults['libDir'] = None
+    cfgDefaults['knownPath'] = None
     cfgDefaults['debug'] = str(False)
-    
     cfgDefaults['useMail'] = str(False)
-
     cfgDefaults['runTimeout'] = str(5)
     cfgDefaults['maxLogSize'] = str(1024*1024*10) # Default to 10 kb maximum log
 

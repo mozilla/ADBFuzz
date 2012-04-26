@@ -32,8 +32,6 @@ class Triager:
     if self.config.useMail:
       self.mailer = Mailer(config)
 
-    # TODO: Move this to config
-    self.knownPath = "/home/decoder/Mozilla/repos/fuzzing/known/mozilla-central/fennec-native"
     self.assertDetector = AssertionDetector(self.config.knownPath)
     self.crashDetector = CrashDetector(self.config.knownPath)
 

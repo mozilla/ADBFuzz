@@ -95,11 +95,11 @@ class Minidump:
           frameFunc = a2ldata[0]
           frameSrc = a2ldata[1]
           self.crashTraceSymbols.append((frameNum, frameFunc, frameSrc))
-          next
+          continue
         elif (len(a2ldata) == 1):
           frameFunc = a2ldata[0]
           self.crashTraceSymbols.append((frameNum, frameFunc, frameFile))
-          next
+          continue
 
       self.crashTraceSymbols.append((frameNum, frameAddr, frameFile))
 

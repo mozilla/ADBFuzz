@@ -21,13 +21,16 @@ import os
 import signal
 import sys
 import re
-from ConfigParser import SafeConfigParser
 
 from detectors import AssertionDetector, CrashDetector
+from mail import Mailer
 
 class Triager:
   def __init__(self, config):
     self.config = config
+    
+    if self.config.useMail:
+      self.mailer = Mailer(config)
 
     # TODO: Move this to config
     self.knownPath = "/home/decoder/Mozilla/repos/fuzzing/known/mozilla-central/fennec-native"
@@ -42,12 +45,14 @@ class Triager:
 
     # Check if the syslog file contains an interesting assertion.
     # The lambda removes the Android syslog tags before matching
-    hasNewAssertion = self.assertDetector.scanFileAssertions(
+    assertions = self.assertDetector.scanFileAssertions(
         systemLogFile, 
         verbose=True, 
         ignoreKnownAssertions=True,
         lineFilter=lambda x: re.sub('^[^:]+: ', '', x)
     )
+    
+    hasNewAssertion = len(assertions) > 0
 
     systemLogFile.close()
     
@@ -56,13 +61,23 @@ class Triager:
 
     isNewCrash = True
     crashFunction = "Unknown"
+    issueDesc = "Unknown"
+    
     if (len(trace) > 0):
       crashFunction = trace[0][1]
-      print "Crashed at " + crashFunction
+      issueDesc = "Crashed at " + crashFunction
       isNewCrash = not self.crashDetector.isKnownCrashSignature(crashFunction)
+      
+    # Use the last assertion as issue description
+    if hasNewAssertion:
+      issueDesc = assertions[len(assertions)-1]
+      
+    print issueDesc
 
     if hasNewAssertion or isNewCrash:
       print "Found new issue, check " + websockLog + " to reproduce"
+      if self.config.useMail:
+        self.mailer.notify(miniDump, issueDesc)
     else:
       # Delete files if not in debug mode
       if not self.config.debug:

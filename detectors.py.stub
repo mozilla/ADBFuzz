@@ -47,8 +47,9 @@ class AssertionDetector(Detector):
     to every line as a filter prior to checking it. The lineFilter function is expected to
     return the filtered line that is checked then.
     
-    Returns True if the file contains any assertions. If ignoreKnownAssertions is True,
-    then True is only returned if at least one assertion is unknown (interesting).
+    Returns an array of all assertions in the file. If ignoreKnownAssertions is True,
+    then only unknown (interesting) assertions are returned. If there are no assertions,
+    an empty array is returned instead.
     """
     return True
 

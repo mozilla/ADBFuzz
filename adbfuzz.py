@@ -34,6 +34,9 @@ def usage():
   print "Usage: " + sys.argv[0] + " cfgFile cmd params"
   print "  Supported commands:"
   print "    run        - Run the fuzzer until manually aborted"
+  print "    deploy     - Deploy the given Firefox package and prefs"
+  print "      param[0]: path to package file"
+  print "      param[1]: path to prefs file"
   print "    showdump   - Show the (symbolized) trace for a given dump"
   print "      param[0]: path to dump file"
   print "      param[1]: symbol search path"
@@ -69,7 +72,8 @@ def main():
   elif (cmd == "run"):
     fuzzInst.remoteInit()
     fuzzInst.loopFuzz()
-
+  elif (cmd == "deploy"):
+    fuzzInst.deploy(sys.argv[1], sys.argv[2])
 
 class ADBFuzz:
 
@@ -81,6 +85,42 @@ class ADBFuzz:
     self.remoteInitialized = None
 
     self.triager = Triager(self.config)
+    
+  def deploy(self, packageFile, prefFile):
+    self.dm = DeviceManagerADB(self.config.remoteAddr, 5555)
+    self.dm.updateApp(packageFile)
+    
+    # Start Fennec, so a profile is created if this is the first install
+    self.startFennec()
+    
+    # Grant some time to create profile
+    time.sleep(self.config.runTimeout)
+    
+    # Stop Fennec again
+    self.stopFennec()
+    
+    # Standard init stuff
+    self.appName = self.dm.packageName
+    self.appRoot = self.dm.getAppRoot(self.appName)
+    self.profileBase = self.appRoot + "/files/mozilla"
+    self.profiles = self.getProfiles()
+
+    # Install a signal handler that shuts down our external programs on SIGINT
+    signal.signal(signal.SIGINT, self.signal_handler)
+
+    if (len(self.profiles) == 0):
+      print "Failed to detect any valid profile, aborting..."
+      return 1
+
+    self.defaultProfile = self.profiles[0]
+
+    if (len(self.profiles) > 1):
+      print "Multiple profiles detected, using the first: " + self.defaultProfile
+      
+    # Push prefs.js to profile
+    self.dm.pushFile(prefFile, self.defaultProfile + "/" + prefs.js)
+    
+    print "Successfully deployed package."
 
   def remoteInit(self):
     if (self.remoteInitialized != None):

@@ -121,7 +121,7 @@ class ADBFuzz:
       print "Multiple profiles detected, using the first: " + self.defaultProfile
       
     # Push prefs.js to profile
-    self.dm.pushFile(prefFile, self.defaultProfile + "/prefs.js")
+    self.dm.pushFile(prefFile, self.profileBase + "/" + self.defaultProfile + "/prefs.js")
     
     print "Successfully deployed package."
 

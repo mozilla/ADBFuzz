@@ -40,6 +40,13 @@ class Triager:
 
     # Read Android system log
     systemLogFile = open(systemLog)
+    
+    # Check if we got aborted or crashed
+    aborted = self.assertDetector.hasFatalAssertion(
+        systemLogFile, 
+        verbose=True, 
+        lineFilter=lambda x: re.sub('^[^:]+: ', '', x)
+    )
 
     # Check if the syslog file contains an interesting assertion.
     # The lambda removes the Android syslog tags before matching
@@ -75,7 +82,7 @@ class Triager:
       
     print issueDesc
 
-    if hasNewAssertion or isNewCrash:
+    if hasNewAssertion or (not aborted and isNewCrash):
       print "Found new issue, check " + websockLog + " to reproduce"
       if self.config.useMail:
         self.mailer.notify(miniDump, issueDesc)

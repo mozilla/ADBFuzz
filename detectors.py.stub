@@ -52,6 +52,15 @@ class AssertionDetector(Detector):
     an empty array is returned instead.
     """
     return True
+  
+  def hasFatalAssertion(self, currentFile, verbose, lineFilter=None):
+    """
+    Determines if the given file contains a fatal assertion. Parameters are the same as for
+    the scanFileAssertions method.
+    
+    Returns true if a fatal assertion was seen, false if not.
+    """
+    return False
 
 class CrashDetector(Detector):
   def __init__(self, knownPath):

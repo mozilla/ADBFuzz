@@ -47,6 +47,10 @@ class Triager:
         verbose=True, 
         lineFilter=lambda x: re.sub('^[^:]+: ', '', x)
     )
+    
+    # Reopen file
+    systemLogFile.close()
+    systemLogFile = open(systemLog)
 
     # Check if the syslog file contains an interesting assertion.
     # The lambda removes the Android syslog tags before matching

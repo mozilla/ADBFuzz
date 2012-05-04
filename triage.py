@@ -65,6 +65,9 @@ class Triager:
       crashFunction = trace[0][1]
       issueDesc = "Crashed at " + crashFunction
       isNewCrash = not self.crashDetector.isKnownCrashSignature(crashFunction)
+      # Also check first frame (some functions are blacklisted here)
+      if (isNewCrash and len(trace) > 1):
+        isNewCrash = not self.crashDetector.isKnownCrashSignature(trace[1][1])
       
     # Use the last assertion as issue description
     if hasNewAssertion:

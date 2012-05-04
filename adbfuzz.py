@@ -88,7 +88,16 @@ class ADBFuzz:
     
   def deploy(self, packageFile, prefFile):
     self.dm = DeviceManagerADB(self.config.remoteAddr, 5555)
+    
+    # Install a signal handler that shuts down our external programs on SIGINT
+    signal.signal(signal.SIGINT, self.signal_handler)
+    
     self.dm.updateApp(packageFile)
+    
+    # Standard init stuff
+    self.appName = self.dm.packageName
+    self.appRoot = self.dm.getAppRoot(self.appName)
+    self.profileBase = self.appRoot + "/files/mozilla"
     
     # Start Fennec, so a profile is created if this is the first install
     self.startFennec()
@@ -99,14 +108,8 @@ class ADBFuzz:
     # Stop Fennec again
     self.stopFennec()
     
-    # Standard init stuff
-    self.appName = self.dm.packageName
-    self.appRoot = self.dm.getAppRoot(self.appName)
-    self.profileBase = self.appRoot + "/files/mozilla"
+    # Now try to get the profile(s)
     self.profiles = self.getProfiles()
-
-    # Install a signal handler that shuts down our external programs on SIGINT
-    signal.signal(signal.SIGINT, self.signal_handler)
 
     if (len(self.profiles) == 0):
       print "Failed to detect any valid profile, aborting..."

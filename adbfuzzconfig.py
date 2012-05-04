@@ -26,6 +26,8 @@ class ADBFuzzConfig:
     cfgDefaults['localPort'] = '8088'
     cfgDefaults['useWebSockets'] = False
     cfgDefaults['localWebSocketPort'] = '8089'
+    cfgDefaults['localListenPort'] = '8090'
+    cfgDefaults['localPortOffset'] = '0'
     cfgDefaults['libDir'] = None
     cfgDefaults['knownPath'] = None
     cfgDefaults['debug'] = str(False)
@@ -49,14 +51,22 @@ class ADBFuzzConfig:
 
     self.useWebSockets = self.cfg.getboolean('main', 'useWebSockets')
     self.localWebSocketPort = self.cfg.get('main', 'localWebSocketPort')
+    self.localListenPort = self.cfg.get('main', 'localListenPort')
+    self.localPortOffset = self.cfg.get('main', 'localPortOffset')
     self.libDir = self.cfg.get('main', 'libDir')
-    
+
     # Mail configuration
     self.useMail = self.cfg.getboolean('main', 'useMail')
     if self.useMail:
       self.mailFrom = self.cfg.get('main', 'mailFrom')
       self.mailTo = self.cfg.get('main', 'mailTo')
       self.SMTPHost = self.cfg.get('main', 'SMTPHost')
+      
+    # Add our port offset to all local ports
+    portOffset = int(self.localPortOffset)
+    self.localPort = str(int(self.localPort) + portOffset)
+    self.localWebSocketPort = str(int(self.localWebSocketPort) + portOffset)
+    self.localListenPort = str(int(self.localListenPort) + portOffset)
 
 if __name__ == "__main__":
   raise Exception("This module cannot run standalone, but is used by ADBFuzz")

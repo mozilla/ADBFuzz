@@ -357,8 +357,7 @@ class ADBFuzz:
 
   def startNewWebSocketLog(self):
     self.logFile = 'websock.log'
-    # TODO: Remove hardcoded port here
-    logProcess = subprocess.Popen(["em-websocket-proxy", "-p", "8090", "-q", self.config.localWebSocketPort, "-r", "localhost"])
+    logProcess = subprocess.Popen(["em-websocket-proxy", "-p", self.config.localListenPort, "-q", self.config.localWebSocketPort, "-r", "localhost"])
     self.logProcesses.append(logProcess)
     proxyProcess = subprocess.Popen(["python", "websocklog.py", "localhost", self.config.localWebSocketPort])
     self.logProcesses.append(proxyProcess)

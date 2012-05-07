@@ -21,6 +21,7 @@ import shutil
 import os
 import signal
 import sys
+import traceback
 from ConfigParser import SafeConfigParser
 
 from mozdevice import DeviceManagerADB
@@ -64,8 +65,8 @@ def main():
     for frame in symbolTrace:
       print "#" + frame[0] + "\t" + frame[1] + " at " + frame[2]
   elif (cmd == "reproduce"):
-    fuzzInst.fuzzerFile = sys.argv[1]
-    fuzzInst.runTimeout = int(sys.argv[2])
+    fuzzInst.config.fuzzerFile = sys.argv[1]
+    fuzzInst.config.runTimeout = int(sys.argv[2])
     if fuzzInst.testCrash():
       exit(0)
     exit(1)
@@ -227,31 +228,41 @@ class ADBFuzz:
         self.logProcesses.pop().terminate()
       print "Hang detected or running too long, restarting..."
     else:
-      # Fennec died
-      dumps = self.getMinidumps()
-      if (len(dumps) > 1):
-        raise Exception("Multiple dumps detected!")
-
-      if not self.fetchMinidump(dumps[0]):
-        raise Exception("Failed to fetch minidump with UUID " + dumps[0])
-
-      # Terminate our logging processes and copy logfiles
-      while (len(self.logProcesses) > 0):
-        self.logProcesses.pop().terminate()
-      shutil.copy2(self.syslogFile, dumps[0] + ".syslog")
-      shutil.copy2(self.logFile, dumps[0] + ".log")
-
-      minidump = Minidump(dumps[0] + ".dmp", self.config.libDir)
-
-      print "Crash detected. Reproduction logfile stored at: " + dumps[0] + ".log"
-      crashTrace = minidump.getCrashTrace()
-      crashType = minidump.getCrashType()
-      print "Crash type: " + crashType
-      print "Crash backtrace:"
-      print ""
-      print crashTrace
-
-      self.triager.process(minidump, dumps[0] + ".syslog", dumps[0] + ".log")
+      try:
+        # Fennec died
+        
+        # Terminate our logging processes first
+        while (len(self.logProcesses) > 0):
+          self.logProcesses.pop().terminate()
+        
+        dumps = self.getMinidumps()
+        if (len(dumps) > 1):
+          raise Exception("Multiple dumps detected!")
+          
+        if (len(dumps) < 1):
+          raise Exception("No crash dump detected!")
+  
+        if not self.fetchMinidump(dumps[0]):
+          raise Exception("Failed to fetch minidump with UUID " + dumps[0])
+  
+        # Copy logfiles
+        shutil.copy2(self.syslogFile, dumps[0] + ".syslog")
+        shutil.copy2(self.logFile, dumps[0] + ".log")
+  
+        minidump = Minidump(dumps[0] + ".dmp", self.config.libDir)
+  
+        print "Crash detected. Reproduction logfile stored at: " + dumps[0] + ".log"
+        crashTrace = minidump.getCrashTrace()
+        crashType = minidump.getCrashType()
+        print "Crash type: " + crashType
+        print "Crash backtrace:"
+        print ""
+        print crashTrace
+  
+        self.triager.process(minidump, dumps[0] + ".syslog", dumps[0] + ".log")
+      except Exception, e:
+        print "Error during crash processing: "
+        print traceback.format_exc()
 
     self.HTTPProcess.terminate()
     return

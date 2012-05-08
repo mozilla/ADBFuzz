@@ -33,7 +33,7 @@ class ADBFuzzConfig:
     cfgDefaults['debug'] = str(False)
     cfgDefaults['useMail'] = str(False)
     cfgDefaults['runTimeout'] = str(5)
-    cfgDefaults['maxLogSize'] = str(1024*1024*10) # Default to 10 kb maximum log
+    cfgDefaults['maxLogSize'] = str(1024*1024) # Default to 1 MB maximum log
 
     self.cfg = SafeConfigParser(cfgDefaults)
     if (len(self.cfg.read(cfgFile)) == 0):

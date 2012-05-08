@@ -22,6 +22,7 @@ import os
 import signal
 import sys
 import traceback
+import random
 from ConfigParser import SafeConfigParser
 
 from mozdevice import DeviceManagerADB
@@ -86,6 +87,9 @@ class ADBFuzz:
     self.remoteInitialized = None
 
     self.triager = Triager(self.config)
+    
+    # Seed RNG with localtime
+    random.seed()
     
   def deploy(self, packageFile, prefFile):
     self.dm = DeviceManagerADB(self.config.remoteAddr, 5555)
@@ -381,7 +385,7 @@ class ADBFuzz:
     env = {}
     env['MOZ_CRASHREPORTER_NO_REPORT'] = '1'
     env['MOZ_CRASHREPORTER_SHUTDOWN'] = '1'
-    self.dm.launchProcess([self.appName, "http://" + self.config.localAddr + ":" + self.config.localPort + "/" + self.config.fuzzerFile], None, None, env)
+    self.dm.launchProcess([self.appName, "http://" + self.config.localAddr + ":" + self.config.localPort + "/" + self.getSeededFuzzerFile()], None, None, env)
 
   def stopFennec(self):
     ret = self.dm.killProcess(self.appName, True)
@@ -403,6 +407,11 @@ class ADBFuzz:
         return True
 
     return False
+  
+  def getSeededFuzzerFile(self):
+    fuzzerFile = self.config.fuzzerFile
+    fuzzerSeed = random.randint(0,2**32-1)
+    return fuzzerFile.replace('#SEED#', str(fuzzerSeed))
 
 if __name__ == "__main__":
   main()

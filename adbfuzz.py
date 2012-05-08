@@ -167,8 +167,7 @@ class ADBFuzz:
         pass
     if (self.logProcesses != None):
       try:
-        while (len(self.logProcesses) > 0):
-          self.logProcesses.pop().terminate()
+        self.stopLoggers()
       except:
         pass
 
@@ -228,16 +227,14 @@ class ADBFuzz:
 
     if hangDetected or forceRestart:
       self.stopFennec()
-      while (len(self.logProcesses) > 0):
-        self.logProcesses.pop().terminate()
+      self.stopLoggers()
       print "Hang detected or running too long, restarting..."
     else:
       try:
         # Fennec died
         
         # Terminate our logging processes first
-        while (len(self.logProcesses) > 0):
-          self.logProcesses.pop().terminate()
+        self.stopLoggers()
         
         dumps = self.getMinidumps()
         if (len(dumps) > 1):
@@ -284,6 +281,9 @@ class ADBFuzz:
 
     # Start our HTTP server for serving the fuzzer code
     self.HTTPProcess = self.startHTTPServer()
+    
+    # Start a logcat instance that goes to stdout for progress monitoring
+    logProcess = self.startNewDeviceLog(toStdout=True)
 
     # Start Fennec
     self.startFennec()
@@ -295,16 +295,21 @@ class ADBFuzz:
       if ((time.time() - startTime) > self.config.runTimeout):
         self.stopFennec()
         self.HTTPProcess.terminate()
+        self.stopLoggers()
+        print "[TIMEOUT]"
         return False
 
     self.HTTPProcess.terminate()
+    self.stopLoggers()
 
     # Fennec died, check for crashdumps
     dumps = self.getMinidumps()
     if (len(dumps) > 0):
+      print "[Crash reproduced successfully]"
       return True
     else:
       # Fennec exited, but no crash
+      print "[Exit without Crash]"
       return False
 
   def getProfiles(self):
@@ -357,17 +362,28 @@ class ADBFuzz:
       # This method starts itself multiple processes (proxy included)
       self.startNewWebSocketLog()
     self.startNewDeviceLog()
+    
+  def stopLoggers(self):
+    # Terminate our logging processes
+    while (len(self.logProcesses) > 0):
+      self.logProcesses.pop().terminate()
 
-  def startNewDeviceLog(self):
+  def startNewDeviceLog(self, toStdout=False):
     # Clear the log first
     subprocess.check_call(["adb", "logcat", "-c"])
+    
+    logCmd = ["adb", "logcat", "-s", "Gecko:v", "GeckoDump:v", "GeckoConsole:v", "MOZ_Assert:v"]
 
-    # Logfile
-    self.syslogFile = 'device.log'
-
-    # Start logging
-    logFile = open(self.syslogFile, 'w')
-    logProcess = subprocess.Popen(["adb", "logcat", "-s", "Gecko:v", "GeckoDump:v", "GeckoConsole:v", "MOZ_Assert:v"], stdout=logFile)
+    if toStdout:
+      logProcess = subprocess.Popen(logCmd)
+    else:
+      # Logfile
+      self.syslogFile = 'device.log'
+  
+      # Start logging
+      logFile = open(self.syslogFile, 'w')
+      logProcess = subprocess.Popen(logCmd, stdout=logFile)
+      
     self.logProcesses.append(logProcess)
 
   def startNewWebSocketLog(self):

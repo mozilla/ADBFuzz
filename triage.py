@@ -34,8 +34,10 @@ class Triager:
 
     self.assertDetector = AssertionDetector(self.config.knownPath)
     self.crashDetector = CrashDetector(self.config.knownPath)
+    
+    self.androidLogLinefilter = lambda x: re.sub('^[^:]+: ', '', x)
 
-  def process(self, miniDump, systemLog, websockLog):
+  def process(self, issueUUID, miniDump, systemLog, websockLog):
     print "Triaging crash..."
 
     # Read Android system log
@@ -45,7 +47,7 @@ class Triager:
     aborted = self.assertDetector.hasFatalAssertion(
         systemLogFile, 
         verbose=True, 
-        lineFilter=lambda x: re.sub('^[^:]+: ', '', x)
+        lineFilter=self.androidLogLinefilter
     )
     
     # Reopen file
@@ -58,27 +60,32 @@ class Triager:
         systemLogFile, 
         verbose=True, 
         ignoreKnownAssertions=True,
-        lineFilter=lambda x: re.sub('^[^:]+: ', '', x)
+        lineFilter=self.androidLogLinefilter
     )
     
     hasNewAssertion = len(assertions) > 0
 
     systemLogFile.close()
     
-    # Obtain symbolized crash trace to check crash signature
-    trace = miniDump.getSymbolizedCrashTrace()
-
-    isNewCrash = True
+    if miniDump == None and not hasNewAssertion:
+      print "Error: No minidump available but also no assertions detected!"
+      return
+    
+    isNewCrash = (miniDump != None)
     crashFunction = "Unknown"
     issueDesc = "Unknown"
     
-    if (len(trace) > 0):
-      crashFunction = trace[0][1]
-      issueDesc = "Crashed at " + crashFunction
-      isNewCrash = not self.crashDetector.isKnownCrashSignature(crashFunction)
-      # Also check first frame (some functions are blacklisted here)
-      if (isNewCrash and len(trace) > 1):
-        isNewCrash = not self.crashDetector.isKnownCrashSignature(trace[1][1])
+    if miniDump != None:
+      # Obtain symbolized crash trace to check crash signature
+      trace = miniDump.getSymbolizedCrashTrace()
+      
+      if (len(trace) > 0):
+        crashFunction = trace[0][1]
+        issueDesc = "Crashed at " + crashFunction
+        isNewCrash = not self.crashDetector.isKnownCrashSignature(crashFunction)
+        # Also check first frame (some functions are blacklisted here)
+        if (isNewCrash and len(trace) > 1):
+          isNewCrash = not self.crashDetector.isKnownCrashSignature(trace[1][1])
       
     # Use the last assertion as issue description
     if hasNewAssertion:
@@ -89,15 +96,20 @@ class Triager:
     if hasNewAssertion or (not aborted and isNewCrash):
       print "Found new issue, check " + websockLog + " to reproduce"
       if self.config.useMail:
-        self.mailer.notify(miniDump, issueDesc)
+        self.mailer.notify(issueUUID, issueDesc, miniDump)
     else:
       # Delete files if not in debug mode
       if not self.config.debug:
-        miniDump.cleanup()
+        if miniDump != None:
+          miniDump.cleanup()
         os.remove(systemLog)
         os.remove(websockLog)
 
     return
+  
+  def checkLine(self, line):
+    return self.assertDetector.scanLineAssertions(self.androidLogLinefilter(line))
+    
 
 if __name__ == "__main__":
   raise Exception("This module cannot run standalone, but is used by ADBFuzz")

@@ -23,6 +23,7 @@ import signal
 import sys
 import traceback
 import random
+import uuid
 from ConfigParser import SafeConfigParser
 
 from mozdevice import DeviceManagerADB
@@ -30,6 +31,7 @@ from mozdevice import DeviceManagerADB
 from adbfuzzconfig import ADBFuzzConfig
 from triage import Triager
 from minidump import Minidump
+from logfilter import LogFilter
 
 def usage():
   print ""
@@ -84,6 +86,7 @@ class ADBFuzz:
 
     self.HTTPProcess = None
     self.logProcesses = []
+    self.logThreads = []
     self.remoteInitialized = None
 
     self.triager = Triager(self.config)
@@ -207,7 +210,7 @@ class ADBFuzz:
     logSize = 0
     hangDetected = False
     forceRestart = False
-    while(self.isFennecRunning()):
+    while(self.isFennecRunning() and not self.checkLoggingThreads()):
       time.sleep(self.config.runTimeout)
 
       if not os.path.exists(self.logFile):
@@ -231,36 +234,57 @@ class ADBFuzz:
       print "Hang detected or running too long, restarting..."
     else:
       try:
-        # Fennec died
+        # Fennec died or a logger found something
+        checkCrashDump = True
+        crashUUID = None
+        minidump = None
+        
+        # If Fennec is still running, stop it now
+        if self.isFennecRunning():
+          checkCrashDump = False
+          self.stopFennec()
         
         # Terminate our logging processes first
         self.stopLoggers()
         
-        dumps = self.getMinidumps()
-        if (len(dumps) > 1):
-          raise Exception("Multiple dumps detected!")
+        if checkCrashDump:
+          dumps = self.getMinidumps()
+          if (len(dumps) > 1):
+            raise Exception("Multiple dumps detected!")
+            
+          if (len(dumps) < 1):
+            raise Exception("No crash dump detected!")
+    
+          if not self.fetchMinidump(dumps[0]):
+            raise Exception("Failed to fetch minidump with UUID " + dumps[0])
+  
+          crashUUID = dumps[0]
+  
+          # Copy logfiles
+          shutil.copy2(self.syslogFile, dumps[0] + ".syslog")
+          shutil.copy2(self.logFile, dumps[0] + ".log")
+    
+          minidump = Minidump(dumps[0] + ".dmp", self.config.libDir)
+        else:
+          # We need to generate an arbitrary ID here
+          crashUUID = str(uuid.uuid4())
           
-        if (len(dumps) < 1):
-          raise Exception("No crash dump detected!")
+          # Copy logfiles
+          shutil.copy2(self.syslogFile, crashUUID + ".syslog")
+          shutil.copy2(self.logFile, crashUUID + ".log")
   
-        if not self.fetchMinidump(dumps[0]):
-          raise Exception("Failed to fetch minidump with UUID " + dumps[0])
+        print "Crash detected. Reproduction logfile stored at: " + crashUUID + ".log"
+        if checkCrashDump:
+          crashTrace = minidump.getCrashTrace()
+          crashType = minidump.getCrashType()
+          print "Crash type: " + crashType
+          print "Crash backtrace:"
+          print ""
+          print crashTrace
+        else:
+          print "Crash type: Abnormal behavior (e.g. Assertion violation)"
   
-        # Copy logfiles
-        shutil.copy2(self.syslogFile, dumps[0] + ".syslog")
-        shutil.copy2(self.logFile, dumps[0] + ".log")
-  
-        minidump = Minidump(dumps[0] + ".dmp", self.config.libDir)
-  
-        print "Crash detected. Reproduction logfile stored at: " + dumps[0] + ".log"
-        crashTrace = minidump.getCrashTrace()
-        crashType = minidump.getCrashType()
-        print "Crash type: " + crashType
-        print "Crash backtrace:"
-        print ""
-        print crashTrace
-  
-        self.triager.process(minidump, dumps[0] + ".syslog", dumps[0] + ".log")
+        self.triager.process(crashUUID, minidump, crashUUID + ".syslog", crashUUID + ".log")
       except Exception, e:
         print "Error during crash processing: "
         print traceback.format_exc()
@@ -290,7 +314,7 @@ class ADBFuzz:
 
     startTime = time.time()
 
-    while(self.isFennecRunning()):
+    while(self.isFennecRunning() and not self.checkLoggingThreads()):
       time.sleep(1)
       if ((time.time() - startTime) > self.config.runTimeout):
         self.stopFennec()
@@ -298,6 +322,11 @@ class ADBFuzz:
         self.stopLoggers()
         print "[TIMEOUT]"
         return False
+    
+    abortedByLogThread = False
+    if self.isFennecRunning():
+      abortedByLogThread = True
+      self.stopFennec()
 
     self.HTTPProcess.terminate()
     self.stopLoggers()
@@ -307,8 +336,11 @@ class ADBFuzz:
     if (len(dumps) > 0):
       print "[Crash reproduced successfully]"
       return True
+    elif abortedByLogThread:
+      print "[Abort reproduced successfully]"
+      return True
     else:
-      # Fennec exited, but no crash
+      # Fennec exited, but no crash/abort
       print "[Exit without Crash]"
       return False
 
@@ -367,6 +399,20 @@ class ADBFuzz:
     # Terminate our logging processes
     while (len(self.logProcesses) > 0):
       self.logProcesses.pop().terminate()
+      
+    while (len(self.logThreads) > 0):
+      logThread = self.logThreads.pop()
+      logThread.terminate()
+      logThread.join()
+      
+  def checkLoggingThreads(self):
+    for logThread in self.logThreads:
+      # Check if the thread aborted but did not hit EOF.
+      # That means we hit something interesting.
+      if not logThread.isAlive() and not logThread.eof:
+        return True
+    
+    return False
 
   def startNewDeviceLog(self, toStdout=False):
     # Clear the log first
@@ -375,16 +421,17 @@ class ADBFuzz:
     logCmd = ["adb", "logcat", "-s", "Gecko:v", "GeckoDump:v", "GeckoConsole:v", "MOZ_Assert:v"]
 
     if toStdout:
-      logProcess = subprocess.Popen(logCmd)
+      logFile = None
     else:
       # Logfile
       self.syslogFile = 'device.log'
+      logFile = self.syslogFile
   
-      # Start logging
-      logFile = open(self.syslogFile, 'w')
-      logProcess = subprocess.Popen(logCmd, stdout=logFile)
-      
-    self.logProcesses.append(logProcess)
+    # Start logging thread
+    logThread = LogFilter(self.config, self.triager, logCmd, logFile)
+    logThread.start()
+    
+    self.logThreads.append(logThread)
 
   def startNewWebSocketLog(self):
     self.logFile = 'websock.log'

@@ -20,19 +20,21 @@ class Mailer:
   def __init__(self, config):
     self.config = config
     
-  def notify(self, miniDump, issueDesc):
+  def notify(self, issueUUID, issueDesc, miniDump):
     
     msg = ("From: %s\r\nTo: %s\r\n" % (self.config.mailFrom, self.config.mailTo))
     msg = msg + "Subject: [ADBFuzz] Issue report: " + issueDesc + "\r\n\r\n"
-    msg = msg + "Crash dump: " + miniDump.getFilename() + "\r\n"
+    msg = msg + "Crash UUID: " + issueUUID + "\r\n"
     msg = msg + "Instance identifier: " + self.config.id + "\r\n"
     msg = msg + "\r\n"
-    msg = msg + "Crash trace:" + "\r\n"
     
-    crashTrace = miniDump.getSymbolizedCrashTrace()
+    if miniDump != None:
+      msg = msg + "Crash trace:" + "\r\n"
     
-    for (frameNum, frameAddr, frameFile) in crashTrace:
-      msg = msg + "  " + frameNum + " " + frameAddr + " " + frameFile + "\r\n"
+      crashTrace = miniDump.getSymbolizedCrashTrace()
+    
+      for (frameNum, frameAddr, frameFile) in crashTrace:
+        msg = msg + "  " + frameNum + " " + frameAddr + " " + frameFile + "\r\n"
 
     server = smtplib.SMTP(self.config.SMTPHost)
     server.set_debuglevel(1)

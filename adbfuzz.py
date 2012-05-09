@@ -426,12 +426,16 @@ class ADBFuzz:
       # Logfile
       self.syslogFile = 'device.log'
       logFile = self.syslogFile
+      
+    # We start the logProcess here so we can terminate it before joining the thread
+    logProcess = subprocess.Popen(logCmd, shell=False, stdout=subprocess.PIPE, stderr=None)
   
     # Start logging thread
-    logThread = LogFilter(self.config, self.triager, logCmd, logFile)
+    logThread = LogFilter(self.config, self.triager, logProcess, logFile)
     logThread.start()
     
     self.logThreads.append(logThread)
+    self.logProcesses.append(logProcess)
 
   def startNewWebSocketLog(self):
     self.logFile = 'websock.log'

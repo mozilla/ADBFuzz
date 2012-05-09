@@ -18,10 +18,10 @@ import threading
 import subprocess
 
 class LogFilter(threading.Thread):
-  def __init__(self, config, triager, logCmd, logFile):
+  def __init__(self, config, triager, logProcess, logFile):
     self.config = config
     self.triager = triager
-    self.logCmd = logCmd
+    self.logProcess = logProcess
     self.logFile = logFile
     self.eof = False
     
@@ -34,24 +34,21 @@ class LogFilter(threading.Thread):
     self._stop = threading.Event()
 
   def run(self):
-    
     if self.logFile == None:
       logFileFd = None
     else:
       logFileFd = open(self.logFile, 'w')
-      
-    logProcess = subprocess.Popen(self.logCmd, shell=False, stdout=subprocess.PIPE, stderr=None)
     
     # Loop until we get aborted, hit EOF or find something interesting
     while not self._stop.isSet():
-      line = logProcess.stdout.readline()
+      line = self.logProcess.stdout.readline()
       if (len(line) == 0):
           self.eof = True
           break
       
       if logFileFd == None:
         # Output to stdout
-        print line
+        print line.strip()
       else:
         # Store to file first
         logFileFd.write(line)
@@ -60,8 +57,6 @@ class LogFilter(threading.Thread):
       line = line.strip()
       if self.triager.checkLine(line):
         break
-    
-    logProcess.terminate()
     
     if logFileFd != None:
       logFileFd.close()

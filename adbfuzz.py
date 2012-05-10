@@ -89,6 +89,8 @@ def main():
     fuzzInst.loopFuzz()
   elif (cmd == "deploy"):
     fuzzInst.deploy(sys.argv[1], sys.argv[2])
+  elif (cmd == "reset"):
+    fuzzInst.reset(sys.argv[1])
 
 class ADBFuzz:
 
@@ -143,6 +145,49 @@ class ADBFuzz:
     self.dm.pushFile(prefFile, self.profileBase + "/" + self.defaultProfile + "/prefs.js")
     
     print "Successfully deployed package."
+    
+  def reset(self, prefFile):
+    self.dm = DeviceManagerADB(self.config.remoteAddr, 5555)
+    
+    # Install a signal handler that shuts down our external programs on SIGINT
+    signal.signal(signal.SIGINT, self.signal_handler)
+    
+    # Standard init stuff
+    self.appName = self.dm.packageName
+    self.appRoot = self.dm.getAppRoot(self.appName)
+    self.profileBase = self.appRoot + "/files/mozilla"
+    
+    # Now try to get the old profile(s)
+    self.profiles = self.getProfiles()
+    
+    for profile in self.profiles:
+      self.dm.removeDir(self.profileBase + "/" + self.defaultProfile)
+    
+    # Start Fennec, so a new profile is created
+    self.startFennec()
+    
+    # Grant some time to create profile
+    time.sleep(self.config.runTimeout)
+    
+    # Stop Fennec again
+    self.stopFennec()
+    
+    # Now try to get the profile(s) again
+    self.profiles = self.getProfiles()
+
+    if (len(self.profiles) == 0):
+      print "Failed to detect any valid profile, aborting..."
+      return 1
+
+    self.defaultProfile = self.profiles[0]
+
+    if (len(self.profiles) > 1):
+      print "Multiple profiles detected, using the first: " + self.defaultProfile
+      
+    # Push prefs.js to profile
+    self.dm.pushFile(prefFile, self.profileBase + "/" + self.defaultProfile + "/prefs.js")
+    
+    print "Successfully resetted profile."
 
   def remoteInit(self):
     if (self.remoteInitialized != None):

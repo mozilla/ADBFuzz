@@ -47,6 +47,7 @@ def usage():
   print "    reproduce"
   print "      param[0]: file to test"
   print "      param[1]: run timeout"
+  print "      param[2]: crash type (crash or abort)"
   print ""
 def main():
   if (len(sys.argv) > 2):
@@ -70,7 +71,17 @@ def main():
   elif (cmd == "reproduce"):
     fuzzInst.config.fuzzerFile = sys.argv[1]
     fuzzInst.config.runTimeout = int(sys.argv[2])
-    if fuzzInst.testCrash():
+    
+    isCrash = True
+    
+    if sys.argv[3] == 'crash':
+      isCrash = True
+    elif sys.argv[3] == 'abort':
+      isCrash = False
+    else:
+      raise Exception("Unknown crash type " + sys.argv[3] + " specified!")
+    
+    if fuzzInst.testCrash(isCrash):
       exit(0)
     exit(1)
   elif (cmd == "run"):
@@ -292,7 +303,7 @@ class ADBFuzz:
     self.HTTPProcess.terminate()
     return
 
-  def testCrash(self):
+  def testCrash(self, isCrash):
     self.remoteInit()
 
     # Ensure Fennec isn't running
@@ -334,11 +345,19 @@ class ADBFuzz:
     # Fennec died, check for crashdumps
     dumps = self.getMinidumps()
     if (len(dumps) > 0):
-      print "[Crash reproduced successfully]"
-      return True
+      if isCrash:
+        print "[Crash reproduced successfully]"
+        return True
+      else:
+        print "[Crashed while testing an abort]"
+        return False
     elif abortedByLogThread:
-      print "[Abort reproduced successfully]"
-      return True
+      if isCrash:
+        print "[Aborted while testing a crash]"
+        return False
+      else:
+        print "[Abort reproduced successfully]"
+        return True
     else:
       # Fennec exited, but no crash/abort
       print "[Exit without Crash]"

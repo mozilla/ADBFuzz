@@ -161,7 +161,7 @@ class ADBFuzz:
     self.profiles = self.getProfiles()
     
     for profile in self.profiles:
-      self.dm.removeDir(self.profileBase + "/" + self.defaultProfile)
+      self.dm.removeDir(self.profileBase + "/" + profile)
     
     # Start Fennec, so a new profile is created
     self.startFennec()

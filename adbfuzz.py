@@ -210,6 +210,12 @@ class ADBFuzz:
 
     if (len(self.profiles) > 1):
       print "Multiple profiles detected, using the first: " + self.defaultProfile
+      
+    
+    # Workaround for bug 754575. Avoid using DeviceManagerADB's "removeDir" because
+    # that calls "rm" on every single entry which takes a lot of additional time.
+    print "Purging possible cache leftover directories..."
+    self.dm.runCmd(['shell', 'rm', '-r', self.profileBase + "/" + self.defaultProfile + "/Cache.Trash*"]).communicate()
 
     self.remoteInitialized = True
 

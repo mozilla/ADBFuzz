@@ -120,11 +120,14 @@ class ADBFuzz:
     self.appRoot = self.dm.getAppRoot(self.appName)
     self.profileBase = self.appRoot + "/files/mozilla"
     
+    # Ensure no Fennec instance is running
+    self.stopFennec()
+    
     # Start Fennec, so a profile is created if this is the first install
-    self.startFennec()
+    self.startFennec(blank=True)
     
     # Grant some time to create profile
-    time.sleep(self.config.runTimeout)
+    time.sleep(self.config.runTimeout * 2)
     
     # Stop Fennec again
     self.stopFennec()
@@ -144,6 +147,10 @@ class ADBFuzz:
     # Push prefs.js to profile
     self.dm.pushFile(prefFile, self.profileBase + "/" + self.defaultProfile + "/prefs.js")
     
+    # Try to install addon if requested by configuration
+    if self.config.addon != None:
+      self.ensureExtensionInstalled(self.config.addon)
+    
     print "Successfully deployed package."
     
   def reset(self, prefFile):
@@ -157,17 +164,22 @@ class ADBFuzz:
     self.appRoot = self.dm.getAppRoot(self.appName)
     self.profileBase = self.appRoot + "/files/mozilla"
     
+    # Ensure no Fennec instance is running
+    self.stopFennec()
+    
     # Now try to get the old profile(s)
     self.profiles = self.getProfiles()
     
     for profile in self.profiles:
       self.dm.removeDir(self.profileBase + "/" + profile)
+      
+    self.dm.removeFile(self.profileBase + "/profiles.ini")
     
     # Start Fennec, so a new profile is created
-    self.startFennec()
+    self.startFennec(blank=True)
     
     # Grant some time to create profile
-    time.sleep(self.config.runTimeout)
+    time.sleep(self.config.runTimeout * 2)
     
     # Stop Fennec again
     self.stopFennec()
@@ -186,6 +198,10 @@ class ADBFuzz:
       
     # Push prefs.js to profile
     self.dm.pushFile(prefFile, self.profileBase + "/" + self.defaultProfile + "/prefs.js")
+    
+    # Try to install addon if requested by configuration
+    if self.config.addon != None:
+      self.ensureExtensionInstalled(self.config.addon)
     
     print "Successfully resetted profile."
 
@@ -518,11 +534,17 @@ class ADBFuzz:
     HTTPProcess = subprocess.Popen(["python", "-m", "SimpleHTTPServer", self.config.localPort ])
     return HTTPProcess
 
-  def startFennec(self):
+  def startFennec(self, blank=False):
     env = {}
     env['MOZ_CRASHREPORTER_NO_REPORT'] = '1'
     env['MOZ_CRASHREPORTER_SHUTDOWN'] = '1'
-    self.dm.launchProcess([self.appName, "http://" + self.config.localAddr + ":" + self.config.localPort + "/" + self.getSeededFuzzerFile()], None, None, env)
+    
+    if blank:
+      destURL = "about:blank"
+    else:
+      destURL = "http://" + self.config.localAddr + ":" + self.config.localPort + "/" + self.getSeededFuzzerFile()
+      
+    self.dm.launchProcess([self.appName, destURL], None, None, env)
 
   def stopFennec(self):
     ret = self.dm.killProcess(self.appName, True)
@@ -544,6 +566,24 @@ class ADBFuzz:
         return True
 
     return False
+  
+  def ensureExtensionInstalled(self, extensionFile):
+    extDir = self.profileBase + "/" + self.defaultProfile + "/extensions"
+    extensions = self.dm.listFiles(extDir)
+    extensionFileName = os.path.basename(extensionFile)
+    
+    for extension in extensions:
+      # Check if extension is already installed
+      if extension == extensionFileName:
+        return
+    
+    # Ensure the directory exists (has to be created in a new profile)
+    self.dm.mkDir(extDir)
+    
+    extDest = extDir + '/' + extensionFileName
+      
+    if not self.dm.pushFile(extensionFile, extDest):
+      raise Exception("Failed to install requested extension.")
   
   def getSeededFuzzerFile(self):
     fuzzerFile = self.config.fuzzerFile

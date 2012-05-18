@@ -34,6 +34,7 @@ class ADBFuzzConfig:
     cfgDefaults['useMail'] = str(False)
     cfgDefaults['runTimeout'] = str(5)
     cfgDefaults['maxLogSize'] = str(1024*1024) # Default to 1 MB maximum log
+    cfgDefaults['addon'] = None
 
     self.cfg = SafeConfigParser(cfgDefaults)
     if (len(self.cfg.read(cfgFile)) == 0):
@@ -48,6 +49,7 @@ class ADBFuzzConfig:
     self.localPort = self.cfg.get('main', 'localPort')
     self.debug = self.cfg.getboolean('main', 'debug')
     self.knownPath = self.cfg.get('main', 'knownPath')
+    self.addon = self.cfg.get('main', 'addon')
 
     self.useWebSockets = self.cfg.getboolean('main', 'useWebSockets')
     self.localWebSocketPort = self.cfg.get('main', 'localWebSocketPort')

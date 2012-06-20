@@ -37,7 +37,9 @@ def usage():
   print ""
   print "Usage: " + sys.argv[0] + " cfgFile cmd params"
   print "  Supported commands:"
-  print "    run        - Run the fuzzer until manually aborted"
+  print "    run        - Run the fuzzer until manually aborted or until"
+  print "                 reaching the specified number of iterations"
+  print "      param[0]: number of iterations (optional)"
   print "    deploy     - Deploy the given Firefox package and prefs"
   print "      param[0]: path to package file"
   print "      param[1]: path to prefs file"
@@ -86,7 +88,10 @@ def main():
     exit(1)
   elif (cmd == "run"):
     fuzzInst.remoteInit()
-    fuzzInst.loopFuzz()
+    if (len(sys.argv) > 2):
+      fuzzInst.loopFuzz(sys.argv[1])
+    else:
+      fuzzInst.loopFuzz()
   elif (cmd == "deploy"):
     fuzzInst.deploy(sys.argv[1], sys.argv[2])
   elif (cmd == "reset"):
@@ -252,10 +257,12 @@ class ADBFuzz:
       except:
         pass
 
-  def loopFuzz(self):
+  def loopFuzz(self, maxIterations=None):
     try:
-      while True:
+      iterations = 0
+      while (maxIterations == None or maxIterations >= iterations):
         self.runFuzzer()
+        iterations += 1
     except:
       self.cleanupProcesses()
       raise
